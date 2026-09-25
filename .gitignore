@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Local dataset files
+student_resource/dataset/
+
+# macOS metadata
+.DS_Store
