@@ -1,18 +1,33 @@
 import pandas as pd
 
 
-def block_by_exact_name(source1, source2):
-    """Generate candidates where normalized business names are identical."""
+# Tokens that are too common or too weak to be useful for blocking
+STOP_TOKENS = {
+    "of", "the", "and", "for", "inc", "llp", "ltd", "lp",
+    "llc", "corp", "co", "company", "care", "service",
+    "services", "health", "clinic", "associates",
+    "enterprise", "enterprises", "industries",
+    "p", "d", "m"
+}
 
-    left = source1[["entity_id", "name_clean"]].copy()
-    right = source2[["entity_id", "name_clean"]].copy()
+
+def block_by_exact_name(source1, source2):
+    """Candidates where normalized business names are identical."""
+
+    left = source1[
+        ["entity_id", "name_clean", "country_clean"]
+    ].copy()
+
+    right = source2[
+        ["entity_id", "name_clean", "country_clean"]
+    ].copy()
 
     left = left[left["name_clean"] != ""]
     right = right[right["name_clean"] != ""]
 
     candidates = left.merge(
         right,
-        on="name_clean",
+        on=["name_clean", "country_clean"],
         how="inner",
         suffixes=("_s1", "_candidate")
     )
@@ -28,10 +43,24 @@ def block_by_exact_name(source1, source2):
 
 
 def block_by_name_tokens(source1, source2):
-    """Generate candidates when S1 and candidate share a meaningful name token."""
+    """
+    Generate candidates using informative business-name tokens.
 
-    left = source1[["entity_id", "name_clean"]].copy()
-    right = source2[["entity_id", "name_clean"]].copy()
+    Rules:
+    - Token must have at least 3 characters.
+    - Very common/weak tokens are ignored.
+    - Pairs sharing 2 or more useful tokens are retained.
+    - Pairs sharing only 1 token are retained only when that
+      token occurs at most 3 times in the candidate source.
+    """
+
+    left = source1[
+        ["entity_id", "name_clean", "country_clean"]
+    ].copy()
+
+    right = source2[
+        ["entity_id", "name_clean", "country_clean"]
+    ].copy()
 
     left = left[left["name_clean"] != ""]
     right = right[right["name_clean"] != ""]
@@ -42,43 +71,93 @@ def block_by_name_tokens(source1, source2):
     left = left.explode("name_token")
     right = right.explode("name_token")
 
-    # Ignore extremely short tokens such as "a", "of", "co"
+    # Remove short tokens
     left = left[left["name_token"].str.len() >= 3]
     right = right[right["name_token"].str.len() >= 3]
 
+    # Remove weak/common tokens
+    left = left[~left["name_token"].isin(STOP_TOKENS)]
+    right = right[~right["name_token"].isin(STOP_TOKENS)]
+
+    # Count token frequency in candidate source
+    token_counts = right["name_token"].value_counts()
+
+    # Keep only useful tokens
+    useful_tokens = token_counts[
+        token_counts <= 20
+    ].index
+
+    left = left[left["name_token"].isin(useful_tokens)]
+    right = right[right["name_token"].isin(useful_tokens)]
+
+    # Match S1 and candidate records by token + country
     candidates = left.merge(
         right,
-        on="name_token",
+        on=["name_token", "country_clean"],
         how="inner",
         suffixes=("_s1", "_candidate")
     )
 
-    return (
-        candidates[
-            ["entity_id_s1", "entity_id_candidate"]
-        ]
-        .rename(
-            columns={
-                "entity_id_s1": "source1_entity_id",
-                "entity_id_candidate": "candidate_entity_id"
-            }
+    # Count how many useful tokens each pair shares
+    pair_token_counts = (
+        candidates
+        .groupby(
+            ["entity_id_s1", "entity_id_candidate"],
+            as_index=False
         )
-        .drop_duplicates()
+        .agg(
+            shared_token_count=("name_token", "nunique")
+        )
     )
 
+    # Keep strong multi-token matches
+    strong_pairs = pair_token_counts[
+        pair_token_counts["shared_token_count"] >= 2
+    ]
+
+    # For one-token matches, keep only very rare tokens
+    single_token = candidates[
+        candidates["name_token"].map(token_counts) <= 3
+    ]
+
+    rare_single_pairs = single_token[
+        ["entity_id_s1", "entity_id_candidate"]
+    ].drop_duplicates()
+
+    strong_pairs = strong_pairs[
+        ["entity_id_s1", "entity_id_candidate"]
+    ]
+
+    return pd.concat(
+        [
+            strong_pairs,
+            rare_single_pairs
+        ],
+        ignore_index=True
+    ).rename(
+        columns={
+            "entity_id_s1": "source1_entity_id",
+            "entity_id_candidate": "candidate_entity_id"
+        }
+    ).drop_duplicates()
 
 def block_by_address(source1, source2):
-    """Generate candidates where normalized addresses are identical."""
+    """Candidates where normalized addresses are identical."""
 
-    left = source1[["entity_id", "address_clean"]].copy()
-    right = source2[["entity_id", "address_clean"]].copy()
+    left = source1[
+        ["entity_id", "address_clean", "country_clean"]
+    ].copy()
+
+    right = source2[
+        ["entity_id", "address_clean", "country_clean"]
+    ].copy()
 
     left = left[left["address_clean"] != ""]
     right = right[right["address_clean"] != ""]
 
     candidates = left.merge(
         right,
-        on="address_clean",
+        on=["address_clean", "country_clean"],
         how="inner",
         suffixes=("_s1", "_candidate")
     )
@@ -123,10 +202,7 @@ def combine_candidates(*candidate_frames):
 
 def generate_candidates(source1, candidate_source):
     """
-    Generate final candidate pairs between Source 1 and either
-    Source 2 or Source 3.
-
-    candidate_source can therefore be Source 2 or Source 3.
+    Generate candidates between Source 1 and Source 2 or Source 3.
     """
 
     exact_name_candidates = block_by_exact_name(

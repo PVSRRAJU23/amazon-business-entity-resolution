@@ -31,15 +31,28 @@ def create_labels(feature_df, ground_truth):
     for _, row in ground_truth.iterrows():
 
         source1_id = row["source1_entity_id"]
-
         matched_ids = row["matched_entity_ids"]
 
-        if pd.isna(matched_ids) or str(matched_ids).strip() == "":
-            ground_truth_lookup[source1_id] = set()
-        else:
-            ground_truth_lookup[source1_id] = set(
-                str(matched_ids).split(",")
+        # preprocessing.py converts this column into a list
+        if isinstance(matched_ids, list):
+            actual_matches = set(
+                str(x).strip()
+                for x in matched_ids
+                if str(x).strip()
             )
+
+        # Also support the original comma-separated format
+        elif pd.isna(matched_ids) or str(matched_ids).strip() == "":
+            actual_matches = set()
+
+        else:
+            actual_matches = set(
+                x.strip()
+                for x in str(matched_ids).split(",")
+                if x.strip()
+            )
+
+        ground_truth_lookup[source1_id] = actual_matches
 
     labels = []
 
@@ -53,10 +66,9 @@ def create_labels(feature_df, ground_truth):
             set()
         )
 
-        if candidate_id in actual_matches:
-            labels.append(1)
-        else:
-            labels.append(0)
+        labels.append(
+            int(candidate_id in actual_matches)
+        )
 
     return labels
 
