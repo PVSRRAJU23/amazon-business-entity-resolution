@@ -21,9 +21,9 @@ import pandas as pd
 # student_resource is located directly inside E:\ML-Hackathon
 # alongside amazon-business-entity-resolution.
 
-WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
 
-DATASET_DIR = WORKSPACE_ROOT / "student_resource" / "dataset"
+DATASET_DIR = WORKSPACE_ROOT / "data" / "dataset"
 
 TRAIN_DIR = DATASET_DIR / "train"
 TEST_DIR = DATASET_DIR / "test"
