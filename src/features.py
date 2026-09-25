@@ -31,46 +31,42 @@ def create_pair_features(source1_row, candidate_row):
     """
 
     name = string_similarity(
-        source1_row["business_name_normalized"],
-        candidate_row["business_name_normalized"]
+        source1_row["name_clean"],
+        candidate_row["name_clean"]
     )
 
     address = string_similarity(
-        source1_row["business_address_normalized"],
-        candidate_row["business_address_normalized"]
+        source1_row["address_clean"],
+        candidate_row["address_clean"]
     )
 
     country_match = int(
-        str(source1_row["country"]).strip().lower()
+        str(source1_row["country_clean"]).strip().lower()
         ==
-        str(candidate_row["country"]).strip().lower()
+        str(candidate_row["country_clean"]).strip().lower()
     )
 
     features = {
-        # Name features
         "name_ratio": name["ratio"],
         "name_token_sort": name["token_sort"],
         "name_token_set": name["token_set"],
 
-        # Address features
         "address_ratio": address["ratio"],
         "address_token_sort": address["token_sort"],
         "address_token_set": address["token_set"],
 
-        # Country
         "country_match": country_match,
 
-        # Length differences
         "name_length_diff": abs(
-            len(str(source1_row["business_name_normalized"]))
+            len(str(source1_row["name_clean"]))
             -
-            len(str(candidate_row["business_name_normalized"]))
+            len(str(candidate_row["name_clean"]))
         ),
 
         "address_length_diff": abs(
-            len(str(source1_row["business_address_normalized"]))
+            len(str(source1_row["address_clean"]))
             -
-            len(str(candidate_row["business_address_normalized"]))
+            len(str(candidate_row["address_clean"]))
         )
     }
 
